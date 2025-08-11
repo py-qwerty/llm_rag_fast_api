@@ -1,0 +1,1 @@
+Invoke-RestMethod -Uri "http://localhost:8080/planificar/7574" -Method GET
