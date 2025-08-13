@@ -1,7 +1,14 @@
+import json
 import os
-from pathlib import Path
+
 from dotenv import load_dotenv, find_dotenv
 from openai import OpenAI
+
+from utils.models.question_model import Question, QuestionList
+from utils.repository.agent_repository import AgentRepository
+from agents import Runner
+
+from utils.repository.question_repository import QuestionRepository
 
 class OpenAIRepository:
     def __init__(self, model: str = "gpt-5"):
@@ -28,3 +35,30 @@ class OpenAIRepository:
             input=prompt,
         )
         return response.output_text
+
+    async def generate_questions(
+        self,
+        topic: int,
+        model: str,
+        prompt: str,
+        academy: int,
+        has4questions: bool,
+        num_of_q: int,
+        context: str,
+    ) -> list[Question] | str:
+    
+        # self.agent_repo = AgentRepository(context=context)
+        self.question_repo = QuestionRepository(context=context)
+
+
+        self.result = await self.question_repo.generate_questions_with_feedback(
+            topic=topic,
+            prompt=prompt,
+            academy=academy,
+            has4questions=has4questions,
+            num_of_q=num_of_q,
+            llm_model=model,
+            context=context
+        )
+
+        return self.result

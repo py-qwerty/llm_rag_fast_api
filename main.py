@@ -2,7 +2,7 @@ import os
 from fastapi import FastAPI
 from typing import Union
 from routes.root import read_root as rr
-from routes.llm_create import create as cre
+from routes.llm_create import create as cre, get_questions as gener
 
 # NO cargar dotenv en Cloud Run por ahora
 # from dotenv import load_dotenv
@@ -24,8 +24,9 @@ def read_item(prompt:str = '', system:str = '', effort: str = "low", model: str 
     return cre(system=system, prompt=prompt, model=model, effort=effort)
 
 
-
-
+@app.get("/generate_questions")
+async def question_endpoint(topic: int, academy: int, has4questions: bool, prompt:str = '', context: str = '', num_of_q: int = 1, model: str = 'gpt-5-2025-08-07'):
+    return await gener(topic=topic, academy=academy, has4questions=has4questions, prompt=prompt, num_of_q=num_of_q, model=model, context=context)
 
 @app.get("/health")
 def health_check():
