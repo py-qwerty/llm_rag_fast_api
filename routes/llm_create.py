@@ -32,25 +32,11 @@ async def get_questions(topic: int, prompt: str, academy: int, model: str, has4q
             context=context
         )
 
-        for question in response:
-            SBClient.insert(
-                table="questions",
-                data=question.to_json_without_id()
-            )
-
-        # SBClient.insert(
-        #     table="questions",
-        #     data={
-        #         "topic": topic,
-        #         "academy": academy,
-        #         "prompt": prompt,
-        #         "model": model,
-        #         "num_of_q": num_of_q,
-        #         "effort": effort,
-        #         "questions": [q.to_db_dict() for q in response]
-        #     }
-        # )
-
+        # for question in response:
+        #     SBClient.insert(
+        #         table="questions",
+        #         data=question.to_json_without_id()
+        #     )
         return response
 
     except Exception as e:

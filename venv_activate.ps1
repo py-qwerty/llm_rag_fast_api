@@ -1,1 +1,1 @@
-./.venv/Scripts/activate
+./../llm_rag_fast_api/.venv/Scripts/activate
