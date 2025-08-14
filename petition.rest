@@ -1,0 +1,16 @@
+@host = http://localhost:8000
+@context = < ./context.txt
+
+GET {{host}}/generate_questions
+Content-Type: application/json
+
+{
+  "topic": 529,
+  "academy": 18,
+  "has4questions": false,
+  "prompt": "Genera preguntas a traves de este contexto.",
+  "num_of_q": 5,
+  "llm_model": "gpt-5-2025-08-07",
+  "context": "{{context}}",
+  "max_tokens_per_chunk": 100
+}
