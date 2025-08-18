@@ -10,8 +10,7 @@ from utils.tools.llm_utils import extract_feedback_from_response, extract_questi
 
 class AgentRepository:
 
-    def __init__(self, context: str):
-        self.context = context
+    def __init__(self):
         self.agent = Agent(
             name="Tutor Policia Nacional - Coordinador",
             handoff_description="Un tutor coordinador de la Policia Nacional que determina si generar preguntas o dar feedback.",
