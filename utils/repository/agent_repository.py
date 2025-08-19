@@ -1,12 +1,6 @@
 from agents import Agent, Runner
 from utils.repository.supabase_repository import SupabaseRepository
-from utils.models.question_model import Question, QuestionList
-from datetime import datetime
-from typing import List
-import json
-import math
-
-from utils.tools.llm_utils import extract_feedback_from_response, extract_questions_from_response, merge_feedback_into_questions
+from utils.models.question_model import Question
 
 class AgentRepository:
 

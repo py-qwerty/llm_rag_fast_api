@@ -28,7 +28,6 @@ async def question_endpoint(req: GenerateQuestionsRequest):
         prompt=req.prompt,
         num_of_q=req.num_of_q,
         model=req.llm_model,
-        context=req.context
     )
 
 @router.get("/health")

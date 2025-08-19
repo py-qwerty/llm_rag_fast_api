@@ -31,13 +31,6 @@ def extract_questions_from_response(response: list[Question], academy: int,
     except Exception as e:
         print(f"Error updating questions: {e}")
         return []
-def extract_feedback_from_response(response: list[str]) -> list[str]:
-    try:
-        print(response)
-        return [json.loads(r).get("feedbacks", []) for r in response]
-    except Exception as e:
-        print(f"Error extracting feedbacks: {e}")
-        return []
 
 def merge_feedback_into_questions(questions: List[Question], feedbacks: list[str]) -> List[Question]:
     for i, question in enumerate(questions):

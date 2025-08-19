@@ -1,16 +1,15 @@
 import asyncio
 import json
 import math
-from typing import List, Dict, Any, Optional
+from typing import List, Dict
 from agents import Runner
 from gotrue import List
 
-from utils.models.question_model import Question, QuestionList
+from utils.models.question_model import Question
 from utils.repository.agent_repository import AgentRepository
 from utils.repository.supabase_repository import SupabaseRepository
-from utils.tools.llm_utils import extract_feedback_from_response, extract_questions_from_response, merge_feedback_into_questions
-from utils.rag.embedding_service import EmbeddingService
-from utils.rag.vector_search import VectorSearchService
+from utils.tools.llm_utils import extract_questions_from_response, merge_feedback_into_questions
+
 
 
 class QuestionRepository:
@@ -19,7 +18,6 @@ class QuestionRepository:
         self.agent = self.agent_repo.agent
         self.runner = Runner()
         self.chunkAgent = self.agent_repo.chunkAgent()
-        # Servicios RAG
 
     async def generate_questions_with_feedback(
         self,
@@ -31,25 +29,13 @@ class QuestionRepository:
         num_of_q: int,
         llm_model: str,
         max_tokens_per_chunk: int = 100,
-        batch_size: int = 30,
-        use_rag: bool = True,  # Nuevo parámetro para activar/desactivar RAG
-        top_k: int = 10  # Número de documentos más similares a recuperar
+        batch_size: int = 30,  # Nuevo parámetro para activar/desactivar RAG # Número de documentos más similares a recuperar
     ) -> list[Question] | str:
         try:
             SBClient = SupabaseRepository()
 
             # Obtener orden inicial
             current_order = self._get_current_order(SBClient, topic)
-
-            # Procesar contexto con RAG si está habilitado
-            if use_rag and context and context.strip():
-                print("🔍 Procesando contexto con RAG...")
-                rag_context = await self._process_context_with_rag(
-                    context, topic, academy, top_k
-                )
-                # Usar el contexto enriquecido con RAG
-                context = rag_context
-                print(f"✅ Contexto enriquecido con RAG: {len(context)} caracteres")
 
             # Chunkear contexto
             chunks, use_context_chunks = await self._chunk_context(
@@ -86,48 +72,6 @@ class QuestionRepository:
             return f"Error al generar preguntas y feedback: {e}"
 
     # 🔹 Nuevo método para procesar contexto con RAG
-    async def _process_context_with_rag(
-        self, 
-        context: str, 
-        topic: int, 
-        academy: int, 
-        top_k: int = 10
-    ) -> str:
-        """
-        Procesa el contexto usando RAG:
-        1. Genera embedding del contexto de entrada
-        2. Busca documentos similares en la base de datos
-        3. Combina el contexto original con los documentos encontrados
-        """
-        try:
-            print("📊 Generando embedding del contexto...")
-            # Generar embedding del contexto de entrada
-            context_embedding = await self.embedding_service.generate_embedding(context)
-            
-            print(f"🔍 Buscando {top_k} documentos similares...")
-            # Buscar documentos similares en la base de datos
-            similar_docs = await self.vector_search.search_similar_documents(
-                embedding=context_embedding,
-                topic=topic,
-                academy=academy,
-                limit=top_k
-            )
-            
-            if not similar_docs:
-                print("⚠️ No se encontraron documentos similares, usando contexto original")
-                return context
-            
-            print(f"✅ Encontrados {len(similar_docs)} documentos similares")
-            
-            # Combinar contexto original con documentos encontrados
-            enhanced_context = self._combine_contexts(context, similar_docs)
-            
-            return enhanced_context
-            
-        except Exception as e:
-            print(f"❌ Error en RAG processing: {e}")
-            # Si falla RAG, usar contexto original
-            return context
 
     def _combine_contexts(self, original_context: str, similar_docs: List[Dict]) -> str:
         """
@@ -146,83 +90,7 @@ class QuestionRepository:
         
         return combined_context
 
-    # 🔹 Método para almacenar nuevo contenido en el vector store
-    async def store_content_in_vector_db(
-        self,
-        content: str,
-        topic: int,
-        academy: int,
-        source: str = "Manual upload",
-        metadata: Dict[str, Any] = None
-    ) -> bool:
-        """
-        Almacena nuevo contenido en la base de datos vectorial
-        """
-        try:
-            print("📝 Almacenando contenido en base de datos vectorial...")
-            
-            # Dividir el contenido en chunks si es muy largo
-            chunks = await self._chunk_content_for_storage(content)
-            
-            stored_count = 0
-            for i, chunk in enumerate(chunks):
-                # Generar embedding del chunk
-                embedding = await self.embedding_service.generate_embedding(chunk)
-                
-                # Preparar metadata
-                chunk_metadata = {
-                    "topic": topic,
-                    "academy": academy,
-                    "source": source,
-                    "chunk_index": i,
-                    "total_chunks": len(chunks),
-                    **(metadata or {})
-                }
-                
-                # Almacenar en la base de datos
-                success = await self.vector_search.store_document(
-                    content=chunk,
-                    embedding=embedding,
-                    metadata=chunk_metadata
-                )
-                
-                if success:
-                    stored_count += 1
-            
-            print(f"✅ Almacenados {stored_count}/{len(chunks)} chunks en la base de datos")
-            return stored_count == len(chunks)
-            
-        except Exception as e:
-            print(f"❌ Error almacenando contenido: {e}")
-            return False
 
-    async def _chunk_content_for_storage(self, content: str, max_chunk_size: int = 1000) -> List[str]:
-        """
-        Divide el contenido en chunks apropiados para almacenamiento
-        """
-        if len(content) <= max_chunk_size:
-            return [content]
-        
-        # Usar el agente de chunkeo existente
-        chunk_response = await self.runner.run(self.chunkAgent, f"""
-        Divide este contenido en chunks de máximo {max_chunk_size} caracteres, 
-        manteniendo la coherencia semántica:
-
-        {content}
-
-        IMPORTANTE: Devuelve EXACTAMENTE este formato JSON:
-        {{
-            "chunks": ["chunk 1", "chunk 2"]
-        }}
-        """)
-        
-        try:
-            chunks = chunk_response.final_output_as(list[str])
-            return chunks
-        except Exception as e:
-            print(f"❌ Error en chunkeo para almacenamiento: {e}")
-            # Fallback: división simple por longitud
-            return [content[i:i+max_chunk_size] for i in range(0, len(content), max_chunk_size)]
 
     # 🔹 Métodos auxiliares existentes (sin cambios)
     def _get_current_order(self, SBClient, topic: int) -> int:
@@ -240,8 +108,20 @@ class QuestionRepository:
             print("⚠️ No hay contexto, se generarán preguntas solo con el prompt.")
             return [], False
 
-        print(f"📊 Iniciando chunkeo paralelo del contexto ({len(context)} chars)...")
+        context = context.strip()
         context_length = len(context)
+        
+        # Estimar tokens aproximados (1 token ≈ 4 caracteres para texto en español/inglés)
+        estimated_tokens = context_length // 4
+        
+        print(f"📊 Analizando contexto: {context_length} chars (~{estimated_tokens} tokens)")
+        
+        # Si el contexto es pequeño, no hace falta chunkearlo
+        if estimated_tokens <= max_tokens * 1.2:  # 20% de margen de seguridad
+            print("✅ Contexto pequeño, no requiere chunkeo")
+            return [context], True
+        
+        print(f"📊 Contexto largo detectado, iniciando chunkeo paralelo...")
         sections_for_chunking = min(batch_size, max(1, context_length // 2000))
 
         if sections_for_chunking == 1:
@@ -260,7 +140,7 @@ class QuestionRepository:
             print(f"✅ Chunkeo simple completado: {len(chunks)} chunks generados")
             return chunks, True
 
-        # Chunkeo paralelo
+        # Chunkeo paralelo para contextos muy largos
         section_size = context_length // sections_for_chunking
         chunk_prompts = []
         for i in range(sections_for_chunking):
@@ -294,6 +174,7 @@ class QuestionRepository:
                 chunks.extend(section_chunks)
             except Exception as e:
                 print(f"❌ Error procesando chunks de sección {i}: {e}")
+        
         print(f"✅ Chunkeo paralelo completado: {len(chunks)} chunks totales generados")
         return chunks, True
 
