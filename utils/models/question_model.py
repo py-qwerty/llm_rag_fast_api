@@ -56,12 +56,14 @@ class Question(BaseModel):
             "answer3": self.answer3,
             "answer4": self.answer4,
             "solution": self.solution,
+            
             "tip": self.tip,
             "topic": self.topic,
             "createdAt": self.createdAt.isoformat() if self.createdAt else None,
             "question_prompt": self.question_prompt,
             "llm_model": self.llm_model,
-            "order": self.order
+            "order": self.order,
+            "by_llm": True
         }
 
     def to_json_with_topic_info(self) -> dict:
