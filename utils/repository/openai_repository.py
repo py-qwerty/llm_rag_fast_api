@@ -3,10 +3,9 @@ import os
 
 from dotenv import load_dotenv, find_dotenv
 from openai import OpenAI
+from typing import Optional, List
 
-from utils.models.question_model import Question, QuestionList
-from utils.repository.agent_repository import AgentRepository
-from agents import Runner
+from utils.models.question_model import Question
 
 from utils.repository.question_repository import QuestionRepository
 
@@ -48,7 +47,7 @@ class OpenAIRepository:
     ) -> list[Question] | str:
     
         # self.agent_repo = AgentRepository(context=context)
-        self.question_repo = QuestionRepository(context=context)
+        self.question_repo = QuestionRepository()
 
 
         self.result = await self.question_repo.generate_questions_with_feedback(

@@ -1,5 +1,5 @@
-from openai import OpenAI
 from utils.repository.openai_repository import OpenAIRepository
+from utils.repository.rag_respository import RAGRepository
 from utils.repository.supabase_repository import SupabaseRepository
 
 def create(system: str, prompt: str, model: str = None, effort: str = "low"):
@@ -17,10 +17,23 @@ def create(system: str, prompt: str, model: str = None, effort: str = "low"):
     except Exception as e:
         return {"error": str(e)}, 500
 
-async def get_questions(topic: int, prompt: str, academy: int, model: str, has4questions: bool, num_of_q: int, context: str = ''):
+async def get_questions(topic: int, prompt: str, academy: int, model: str, has4questions: bool, num_of_q: int):
     try:
         client = OpenAIRepository()
         SBClient = SupabaseRepository()
+        rag = RAGRepository(embedding_provider="openai", model_name="text-embedding-3-large")
+
+        # context = "rag_context" # información que has sacado del RAG
+        similar_documents = await rag.search_similar_documents(prompt, limit=5)
+
+        # print(f"Documentos similares encontrados: {similar_documents}")
+
+        documents = [doc['content'] for doc in similar_documents]
+
+        documents = ' '.join(documents)
+
+        # print(f"Contexto RAG obtenido: {len(context)} caracteres")
+        print(documents[:1000])  # Mostrar solo los primeros 1000 caracteres para no saturar el log
 
         response = await client.generate_questions(
             topic=topic,
@@ -29,7 +42,7 @@ async def get_questions(topic: int, prompt: str, academy: int, model: str, has4q
             prompt=prompt,
             num_of_q=num_of_q,
             model=model,
-            context=context
+            context=documents
         )
 
         for question in response:
@@ -37,20 +50,7 @@ async def get_questions(topic: int, prompt: str, academy: int, model: str, has4q
                 table="questions",
                 data=question.to_json_without_id()
             )
-
-        # SBClient.insert(
-        #     table="questions",
-        #     data={
-        #         "topic": topic,
-        #         "academy": academy,
-        #         "prompt": prompt,
-        #         "model": model,
-        #         "num_of_q": num_of_q,
-        #         "effort": effort,
-        #         "questions": [q.to_db_dict() for q in response]
-        #     }
-        # )
-
+        # return "Hola"
         return response
 
     except Exception as e:
