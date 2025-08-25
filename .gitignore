@@ -1,6 +1,6 @@
 .venv
 .env
-Dockerfile
+
 text_parser.py
 context.txt
 petitions.rest
