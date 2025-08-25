@@ -45,11 +45,11 @@ async def get_questions(topic: int, prompt: str, academy: int, model: str, has4q
             context=documents
         )
 
-        # for question in response:
-        #     SBClient.insert(
-        #         table="questions",
-        #         data=question.to_json_without_id()
-        #     )
+        for question in response:
+            SBClient.insert(
+                table="questions",
+                data=question.to_json_without_id()
+            ) # guarda en BDD
         # return "Hola"
         return response
 
