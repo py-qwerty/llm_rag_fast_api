@@ -3,7 +3,10 @@ from typing import Union
 from routes.root import read_root as rr
 from routes.llm_create import create as cre, get_questions as gener
 from utils.models.generate_question_model import GenerateQuestionsRequest
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+
+# 👇 importa la dependencia de auth
+from middlewares.validateToken import auth_dependency
 
 router = APIRouter()
 
@@ -13,14 +16,14 @@ def read_root():
     return rr()
 
 @router.get("/create")
-def read_item(prompt:str = '', system:str = '', effort: str = "low", model: str = 'gpt-5-2025-08-07'):
+def read_item(prompt: str = '', system: str = '', effort: str = "low", model: str = 'gpt-5-2025-08-07'):
     return cre(system=system, prompt=prompt, model=model, effort=effort)
 
-
 @router.post("/generate_questions")
-# async def question_endpoint(topic: int, academy: int, has4questions: bool, prompt:str = '', context: str = '', num_of_q: int = 1, model: str = 'gpt-5-2025-08-07'):
-#     return await gener(topic=topic, academy=academy, has4questions=has4questions, prompt=prompt, num_of_q=num_of_q, model=model, context=context)
-async def question_endpoint(req: GenerateQuestionsRequest):
+async def question_endpoint(
+    req: GenerateQuestionsRequest,
+    user=Depends(auth_dependency)  # 🔒 protege solo este endpoint
+):
     return await gener(
         topic=req.topic,
         academy=req.academy,
