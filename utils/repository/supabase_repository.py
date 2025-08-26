@@ -2,14 +2,18 @@ import os
 from dotenv import load_dotenv
 from supabase import create_client, Client
 
+
 class SupabaseRepository:
     def __init__(self):
-        load_dotenv()
+        # Only load .env if it exists (for local development)
+        if os.path.exists('.env'):
+            load_dotenv()
+
         url = os.getenv("SUPABASE_URL")
         key = os.getenv("SUPABASE_KEY")
 
         if not url or not key:
-            raise ValueError("Faltan variables SUPABASE_URL o SUPABASE_KEY en el .env")
+            raise ValueError("Missing SUPABASE_URL or SUPABASE_KEY environment variables")
 
         self.client: Client = create_client(url, key)
 
@@ -24,23 +28,22 @@ class SupabaseRepository:
         :param limit: número máximo de registros a devolver
         """
         query = self.client.table(table).select("*")
-        
+
         # Aplicar filtros
         if filters:
             for col, val in filters.items():
                 query = query.eq(col, val)
-        
+
         # Aplicar ordenamiento
         if order_by:
             query = query.order(order_by, desc=(order_dir.lower() == "desc"))
-        
+
         # Aplicar límite
         if limit is not None:
             query = query.limit(limit)
-        
+
         # Ejecutar consulta
         return query.execute().data
-
 
     def insert(self, table: str, data: dict):
         return self.client.table(table).insert(data).execute().data

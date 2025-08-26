@@ -1,51 +1,46 @@
 FROM python:3.11-slim
 
-# Metadatos
 LABEL maintainer="pablo@example.com"
 LABEL description="LLM RAG FastAPI Application"
 
-# Configurar entorno
+# Environment variables for Python
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# Instalar dependencias del sistema
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
 WORKDIR /app
 
-# Instalar dependencias Python
+# Copy requirements first for better caching
 COPY requirements.txt .
+
+# Install Python dependencies
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir python-dotenv
+    pip install --no-cache-dir -r requirements.txt
 
-# Copiar archivos de aplicación
-COPY main.py .
-COPY start.sh .
+# Copy application code
+COPY . .
 
-# Hacer ejecutable el script
-RUN chmod +x start.sh
-
-# Crear usuario no-root
+# Create non-root user
 RUN useradd --create-home --shell /bin/bash appuser && \
     chown -R appuser:appuser /app
+
 USER appuser
 
-# Variables de entorno por defecto
+# Environment variables for the application
 ENV PORT=8080
 ENV HOST=0.0.0.0
 ENV LOG_LEVEL=info
 
-# Exponer puerto
 EXPOSE $PORT
 
-# REMOVER health check por ahora para debugging
-# HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-#     CMD curl -f http://localhost:$PORT/health || exit 1
+# Add healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:$PORT/health || exit 1
 
-# Comando de inicio simplificado para debugging
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080", "--log-level", "info"]
+# Start command with longer timeout and more workers for production
+CMD uvicorn main:app --host $HOST --port $PORT --log-level $LOG_LEVEL --timeout-keep-alive 300 --timeout-graceful-shutdown 300

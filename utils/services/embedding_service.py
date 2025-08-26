@@ -1,147 +1,118 @@
-# utils/rag/embedding_service.py
-import asyncio
-import openai
-from typing import List, Optional
-import numpy as np
-from sentence_transformers import SentenceTransformer
 import os
+from typing import List
+from openai import OpenAI
+from dotenv import load_dotenv
+
 
 class EmbeddingService:
     """
-    Servicio para generar embeddings de texto usando diferentes proveedores
+    Servicio de embeddings usando únicamente OpenAI
     """
-    
-    def __init__(self, provider: str = "openai", model_name: Optional[str] = None):
-        """
-        Inicializa el servicio de embeddings
-        
-        Args:
-            provider: "openai", "huggingface", o "sentence_transformers"
-            model_name: Nombre específico del modelo a usar
-        """
-        self.provider = provider.lower()
-        
-        if self.provider == "openai":
-            self.model_name = model_name or "text-embedding-3-large"
-            self.client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-            
-        elif self.provider == "sentence_transformers":
-            self.model_name = model_name or "all-MiniLM-L6-v2"
-            # Cargar modelo localmente
-            self.model = SentenceTransformer(self.model_name)
-            
-        else:
-            raise ValueError(f"Proveedor no soportado: {provider}")
-    
+
+    def __init__(self, model_name: str = "text-embedding-3-large"):
+        # Only load .env if it exists (for local development)
+        if os.path.exists('.env'):
+            load_dotenv()
+
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("Missing OPENAI_API_KEY environment variable")
+
+        self.client = OpenAI(api_key=api_key)
+        self.model_name = model_name
+        self.dimensions = 3072  # text-embedding-3-large dimensions
+
+        print(f"EmbeddingService initialized with OpenAI model: {self.model_name}")
+
     async def generate_embedding(self, text: str) -> List[float]:
         """
-        Genera embedding para un texto dado
-        
+        Genera embedding para un texto usando OpenAI
+
         Args:
-            text: Texto a convertir en embedding
-            
+            text: Texto de entrada
+
         Returns:
-            Lista de floats representando el embedding
+            Lista de floats representando el vector embedding
         """
+        if not text or not text.strip():
+            raise ValueError("Text cannot be empty")
+
         try:
-            if self.provider == "openai":
-                return await self._generate_openai_embedding(text)
-            elif self.provider == "sentence_transformers":
-                return await self._generate_sentence_transformer_embedding(text)
+            # Clean and truncate text if necessary
+            cleaned_text = text.strip()
+
+            # OpenAI has token limits, roughly 8191 tokens for text-embedding-3-large
+            # Approximate: 1 token ≈ 4 characters, so limit to ~30k characters
+            if len(cleaned_text) > 30000:
+                cleaned_text = cleaned_text[:30000] + "..."
+                print(f"Warning: Text truncated to 30k characters")
+
+            response = self.client.embeddings.create(
+                model=self.model_name,
+                input=cleaned_text,
+                encoding_format="float"
+            )
+
+            embedding = response.data[0].embedding
+
+            if len(embedding) != self.dimensions:
+                print(f"Warning: Expected {self.dimensions} dimensions, got {len(embedding)}")
+
+            return embedding
+
         except Exception as e:
-            print(f"❌ Error generando embedding: {e}")
+            print(f"Error generating embedding: {e}")
             raise
-    
-    async def generate_embeddings_batch(self, texts: List[str]) -> List[List[float]]:
+
+    async def generate_batch_embeddings(self, texts: List[str]) -> List[List[float]]:
         """
-        Genera embeddings para múltiples textos en batch
-        
+        Genera embeddings para múltiples textos de forma eficiente
+
         Args:
-            texts: Lista de textos a convertir en embeddings
-            
+            texts: Lista de textos
+
         Returns:
             Lista de embeddings
         """
+        if not texts:
+            return []
+
         try:
-            if self.provider == "openai":
-                return await self._generate_openai_embeddings_batch(texts)
-            elif self.provider == "sentence_transformers":
-                return await self._generate_sentence_transformer_embeddings_batch(texts)
-        except Exception as e:
-            print(f"❌ Error generando embeddings en batch: {e}")
-            raise
-    
-    async def _generate_openai_embedding(self, text: str) -> List[float]:
-        """Genera embedding usando OpenAI"""
-        response = await self.client.embeddings.create(
-            input=text,
-            model=self.model_name
-        )
-        return response.data[0].embedding
-    
-    async def _generate_openai_embeddings_batch(self, texts: List[str]) -> List[List[float]]:
-        """Genera embeddings en batch usando OpenAI"""
-        # OpenAI permite hasta 2048 textos por batch
-        batch_size = 2048
-        all_embeddings = []
-        
-        for i in range(0, len(texts), batch_size):
-            batch_texts = texts[i:i + batch_size]
-            response = await self.client.embeddings.create(
-                input=batch_texts,
-                model=self.model_name
+            # Clean texts
+            cleaned_texts = []
+            for text in texts:
+                if text and text.strip():
+                    cleaned_text = text.strip()
+                    if len(cleaned_text) > 30000:
+                        cleaned_text = cleaned_text[:30000] + "..."
+                    cleaned_texts.append(cleaned_text)
+
+            if not cleaned_texts:
+                return []
+
+            # OpenAI allows batch requests
+            response = self.client.embeddings.create(
+                model=self.model_name,
+                input=cleaned_texts,
+                encoding_format="float"
             )
-            batch_embeddings = [data.embedding for data in response.data]
-            all_embeddings.extend(batch_embeddings)
-        
-        return all_embeddings
-    
-    async def _generate_sentence_transformer_embedding(self, text: str) -> List[float]:
-        """Genera embedding usando Sentence Transformers"""
-        # Ejecutar en un hilo separado para no bloquear el event loop
-        loop = asyncio.get_event_loop()
-        embedding = await loop.run_in_executor(
-            None, 
-            lambda: self.model.encode([text])[0].tolist()
-        )
-        return embedding
-    
-    async def _generate_sentence_transformer_embeddings_batch(self, texts: List[str]) -> List[List[float]]:
-        """Genera embeddings en batch usando Sentence Transformers"""
-        loop = asyncio.get_event_loop()
-        embeddings = await loop.run_in_executor(
-            None,
-            lambda: self.model.encode(texts).tolist()
-        )
-        return embeddings
-    
-    def get_embedding_dimension(self) -> int:
+
+            embeddings = [item.embedding for item in response.data]
+
+            print(f"Generated {len(embeddings)} embeddings in batch")
+            return embeddings
+
+        except Exception as e:
+            print(f"Error generating batch embeddings: {e}")
+            raise
+
+    def get_model_info(self) -> dict:
         """
-        Retorna la dimensión del embedding según el modelo usado
+        Retorna información sobre el modelo actual
         """
-        dimensions = {
-            "text-embedding-3-small": 1536,
-            "text-embedding-3-large": 3072,
-            "text-embedding-ada-002": 1536,
-            "all-MiniLM-L6-v2": 384,
-            "all-mpnet-base-v2": 768
+        return {
+            "provider": "openai",
+            "model": self.model_name,
+            "dimensions": self.dimensions,
+            "max_tokens": 8191
         }
-        
-        return dimensions.get(self.model_name, 768)  # Default 768
-    
-    @staticmethod
-    def calculate_cosine_similarity(embedding1: List[float], embedding2: List[float]) -> float:
-        """
-        Calcula la similitud coseno entre dos embeddings
-        """
-        vec1 = np.array(embedding1)
-        vec2 = np.array(embedding2)
-        
-        dot_product = np.dot(vec1, vec2)
-        norm1 = np.linalg.norm(vec1)
-        norm2 = np.linalg.norm(vec2)
-        
-        if norm1 == 0 or norm2 == 0:
-            return 0.0
-        
-        return dot_product / (norm1 * norm2)
