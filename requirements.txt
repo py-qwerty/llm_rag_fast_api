@@ -5,4 +5,4 @@ uvicorn[standard]==0.32.1
 supabase==2.18.0
 openai-agents==0.2.6
 numpy==2.3.2
-sentence-transformers==5.1.0
+sentence-transformer==5.1.0

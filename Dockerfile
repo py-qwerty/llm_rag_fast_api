@@ -24,8 +24,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir python-dotenv
 
 # Copiar archivos de aplicación
-COPY main.py .
-COPY start.sh .
+COPY . .
 
 # Hacer ejecutable el script
 RUN chmod +x start.sh

@@ -26,10 +26,11 @@ class OpenAIRepository:
     def generate_text(self, system: str,  prompt: str, model: str = None, effort: str = "low") -> str:
         """Generates text using OpenAI's API."""
         if model is None:
-            model = self.main_model
+            model = "gpt-5-nano"
         response = self.client.responses.create(
-            model="gpt-5",
-            reasoning={"effort": effort},
+            model=model,
+            reasoning={"effort": "low"},
+            text={"verbosity": "low"},
             instructions=system,
             input=prompt,
         )

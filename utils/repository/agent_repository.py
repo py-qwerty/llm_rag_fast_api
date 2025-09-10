@@ -21,12 +21,13 @@ class AgentRepository:
         SBClient = SupabaseRepository()
         prompt_data = SBClient.select("gpt_prompts", {"destination": "generate_question"})
         instructions = prompt_data[0].get("prompt_system", "") if prompt_data else ""
+
         return Agent(
             name="Generador de Preguntas",
             handoff_description="Un tutor de la Policia Nacional que crea preguntas para exámenes.",
             instructions=instructions,
             output_type=list[Question],
-            
+
         )
 
     def feedbackAgent(self):

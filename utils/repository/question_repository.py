@@ -29,12 +29,12 @@ class QuestionRepository:
         num_of_q: int,
         llm_model: str,
         max_tokens_per_chunk: int = 100,
-        batch_size: int = 30,  # Nuevo parámetro para activar/desactivar RAG # Número de documentos más similares a recuperar
+        batch_size: int = 30,  # Nuevo parámetro para activar/desactivar RAG #Número de documentos más similares a recuperar
     ) -> list[Question] | str:
         try:
             SBClient = SupabaseRepository()
 
-            # Obtener orden inicial
+            # Si existen preguntas previas, obtener el siguiente orden
             current_order = self._get_current_order(SBClient, topic)
 
             # Chunkear contexto
