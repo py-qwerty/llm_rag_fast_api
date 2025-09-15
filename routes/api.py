@@ -14,7 +14,6 @@ env_path = parent_dir / ".env"
 load_dotenv(dotenv_path=env_path)
 
 # Imports del proyecto
-from routes.root import read_root as rr
 from middlewares.validateToken import auth_dependency
 
 # ✅ Importa servicio y modelo tipado del RAG
@@ -301,4 +300,4 @@ async def agents_status(user=Depends(auth_dep)):
 
 @router.get("/")
 def read_root():
-    return rr()
+    return {"message": "API RAG con OpenAI Agents SDK. Usa /docs para ver la documentación."}

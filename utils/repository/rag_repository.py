@@ -73,10 +73,10 @@ ESTRATEGIA DE BÚSQUEDA:
 - Considera hacer múltiples búsquedas con diferentes límites si la primera no es suficiente.
 
 FORMATO DE SALIDA (JSON estricto del modelo Pydantic):
-{{
+{
   "response": "<tu explicación en lenguaje natural>\\n\\n--- TEXTOS LEGALES CONSULTADOS ---\\n<citas literales exactas, tal cual devueltas por las tools>",
   "reasoning": "Enumera búsquedas realizadas (qué tool, qué límite y por qué), documentos usados y por qué la interpretación es correcta."
-}}
+}
 No añadas campos extra ni metadatos.
 """
 
@@ -144,14 +144,19 @@ async def search_legal_documents(query: str, limit: Optional[int] = None) -> str
         effective_limit = max(effective_limit, _MIN_SEARCH_LIMIT)
 
         logger.info(f"🔍 EMBEDDINGS: Iniciando búsqueda semántica para: '{query}' (límite: {effective_limit})")
+        print(f"[EMBEDDINGS] → Inicio de búsqueda semántica | query='{query}' | límite={effective_limit}")
 
         embedding_service = EmbeddingService(provider="openai", model_name="text-embedding-3-large")
         vector_search_service = VectorSearchService()
 
         logger.info("📡 EMBEDDINGS: Generando embedding para la consulta...")
+        print("[EMBEDDINGS] Generando embedding (modelo='text-embedding-3-large')")
+
         query_embedding = await embedding_service.generate_embedding(query)
 
         logger.info(f"🎯 EMBEDDINGS: Buscando vectores similares (umbral=0.2, límite={effective_limit})")
+        print(f"[EMBEDDINGS] Búsqueda vectorial | similarity_threshold=0.2 | limit={effective_limit}")
+
         search_results = await vector_search_service.search_similar_vectors(
             embedding=query_embedding,
             limit=effective_limit,
@@ -160,11 +165,15 @@ async def search_legal_documents(query: str, limit: Optional[int] = None) -> str
 
         if not search_results:
             logger.warning(f"⚠️ EMBEDDINGS: Sin resultados para: {query}")
+            print(f"[EMBEDDINGS] ⚠️ Sin resultados para query='{query}'")
             return f"No se encontraron documentos relevantes para: {query}"
 
         # Salida literal: nada de previews ni recortes
         lines: List[str] = [f"DOCUMENTOS ENCONTRADOS (Embeddings) para '{query}' (límite usado: {effective_limit}):",
                             ""]
+
+        print(f"[EMBEDDINGS] {len(search_results[:effective_limit])} documentos recuperados (se devuelven literal)")
+
         for i, item in enumerate(search_results[:effective_limit], 1):
             title = item.law_title or item.item_title or "Documento Legal"
             item_id = item.item_id
@@ -178,23 +187,26 @@ async def search_legal_documents(query: str, limit: Optional[int] = None) -> str
                 f"{i}.  law title **{title}**",
                 f"law_id  unic: {law_unic_id}",
                 f"item_title  : {item_title}",
-                f"; law_item_id {item_id}",
+                f";law_item_id {item_id}",
                 (f";Identificador del BOE de ley: {law_identifier}" if law_identifier else ""),
                 (f";URL: {url}" if url else ""),
                 "   CONTENIDO:",
                 content,  # ← CONTENIDO LITERAL COMPLETO
                 ""
             ]
-            logger.info(f'########----------{item.law_title} --> {item.item_title}----------########')
+
+
 
         out = "\n".join([ln for ln in lines if ln is not None])
         logger.info(
             f"✅ EMBEDDINGS: Retornando {len(search_results[:effective_limit])} documentos al agente (contenido literal)")
+        print("[EMBEDDINGS] ✅ Devolviendo resultados (literal) al agente")
         return out
 
     except Exception as e:
         error_msg = f"Error buscando documentos (embeddings): {str(e)}"
         logger.error(f"❌ EMBEDDINGS: {error_msg}")
+        print(f"[EMBEDDINGS] ❌ {error_msg}")
         return error_msg
 
 
@@ -224,6 +236,7 @@ async def search_legal_documents_hybrid(query: str, law_id: Optional[int] = None
         effective_limit = max(effective_limit, _MIN_SEARCH_LIMIT)
 
         logger.info(f"🔎 SQL: Búsqueda plana para: '{query}' (law_id={law_id}, límite={effective_limit})")
+        print(f"[SQL] → Inicio de búsqueda plana | query='{query}' | law_id={law_id} | límite={effective_limit}")
 
         service = LegalSearchService(schema_name="law_frame", rpc_name="search_legal_content")
         # Soporta servicios síncronos o asíncronos de forma flexible
@@ -232,14 +245,16 @@ async def search_legal_documents_hybrid(query: str, law_id: Optional[int] = None
 
         if not rows:
             logger.warning(f"⚠️ SQL: Sin resultados para: {query}")
+            print(f"[SQL] ⚠️ Sin resultados para query='{query}'")
             return f"No se encontraron documentos relevantes para: {query}"
 
         lines: List[str] = [f"DOCUMENTOS ENCONTRADOS (SQL) para '{query}' (límite usado: {effective_limit}):", ""]
         logger.info(f"✅ SQL: {len(rows)} documentos, preparando salida literal...")
+        print(f"[SQL] {len(rows[:effective_limit])} documentos recuperados (se devuelven literal)")
 
         for i, r in enumerate(rows[:effective_limit], 1):
             title = r.law_title or r.item_title or "Documento Legal"
-            item_id = r.item_title or "N/A"
+            item_id = r.item_id or "N/A"
             law_identifier = r.law_identifier or ""
             url = r.url or ""
             item_title = r.item_title or "N/A"
@@ -250,7 +265,7 @@ async def search_legal_documents_hybrid(query: str, law_id: Optional[int] = None
                 f"{i}.  law title **{title}**",
                 f"law_id  unic: {law_unic_id}",
                 f"item_title  : {item_title}",
-                f"; law_item unic id {item_id}",
+                f";law_item_id {item_id}",
                 (f";Identificador del BOE de ley: {law_identifier}" if law_identifier else ""),
                 (f";URL: {url}" if url else ""),
                 "   CONTENIDO:",
@@ -258,11 +273,12 @@ async def search_legal_documents_hybrid(query: str, law_id: Optional[int] = None
                 ""
             ]
 
-            logger.info(f'########----------{r.law_title} --> {r.item_title}----------########')
+        print("[SQL] ✅ Devolviendo resultados (literal) al agente")
         return "\n".join([ln for ln in lines if ln is not None])
 
     except Exception as e:
         logger.error(f"❌ SQL: Error en búsqueda: {e}")
+        print(f"[SQL] ❌ Error en búsqueda: {e}")
         return f"Error en búsqueda: {e}"
 
 
@@ -275,12 +291,18 @@ def _get_prompts_from_supabase(supabase: SupabaseRepository, destination: str) -
     Función interna para manejo de prompts dinámicos.
     """
     try:
+        print(f"[SUPABASE] Buscando prompt para destination='{destination}'")
         result = supabase.select(table='gpt_prompts', limit=1, filters={'destination': destination})
         if result and len(result) > 0:
-            return result[0].get('prompt_system', None), result[0].get('model', None)
+            instructions = result[0].get('prompt_system', None)
+            model = result[0].get('model', None)
+            print(f"[SUPABASE] ✅ Prompt encontrado | model='{model}' | usa_fallback={instructions is None}")
+            return instructions, model
+        print("[SUPABASE] ⚠️ No hay prompt; se usará fallback")
         return (None, None)
     except Exception as e:
         logger.error(f"Error obteniendo prompt de Supabase para '{destination}': {e}")
+        print(f"[SUPABASE] ❌ Error obteniendo prompt para '{destination}': {e} (se usará fallback)")
         return (None, None)
 
 
@@ -297,11 +319,14 @@ def _create_legal_specialist(
     Función interna para configuración de agente legal.
     """
     logger.info("🏗️ Creando Legal Analysis Specialist...")
+    print("[AGENTES] Construyendo 'Legal Analysis Specialist'")
     instructions, model = _get_prompts_from_supabase(supabase, 'legal_search_and_cite')
     output_format = output_format or BaseResponse
 
-    # Insertar el límite mínimo en las instrucciones
+    # Insertar el límite mínimo en las instrucciones (nota: el fallback contiene placeholder sin formatear)
     final_instructions = instructions or _DEFAULT_LEGAL_PROMPT
+    if instructions is None:
+        print("[AGENTES] ⚠️ Usando instrucciones fallback para Legal Specialist (con placeholders no formateados)")
 
     agent = Agent(
         name="Legal Analysis Specialist",
@@ -312,6 +337,7 @@ def _create_legal_specialist(
     )
     logger.info(
         f"✅ Legal Analysis Specialist creado (modelo: {model}, límite mín: {min_search_limit}, herramientas: 2)")
+    print(f"[AGENTES] ✅ Legal Specialist listo | model='{model}' | min_limit={min_search_limit} | tools=['embeddings','sql']")
     return agent
 
 
@@ -324,7 +350,8 @@ def _create_general_assistant(
     Función interna para configuración de agente general.
     """
     logger.info("🏗️ Creando General Assistant...")
-    instructions, model = _get_prompts_from_supabase(supabase, 'emoji')
+    print("[AGENTES] Construyendo 'General Assistant'")
+    instructions, model = _get_prompts_from_supabase(supabase, 'chat_ai_response')
     output_format = output_format or BaseResponse
 
     agent = Agent(
@@ -334,6 +361,7 @@ def _create_general_assistant(
         output_type=AgentOutputSchema(output_format, strict_json_schema=True)
     )
     logger.info(f"✅ General Assistant creado (modelo: {model})")
+    print(f"[AGENTES] ✅ General Assistant listo | model='{model}' | esquema_salida='{output_format.__name__}'")
     return agent
 
 
@@ -349,19 +377,24 @@ def _create_coordinator(
     Función interna para configuración del agente coordinador.
     """
     logger.info("🏗️ Creando Query Coordinator...")
+    print("[AGENTES] Construyendo 'Query Coordinator'")
     instructions, model = _get_prompts_from_supabase(supabase, 'coordinator')
     output_format = output_format or BaseResponse
 
-
     final_instructions = instructions or _DEFAULT_COORDINATOR_PROMPT
+    if instructions is None:
+        print("[AGENTES] ⚠️ Usando instrucciones fallback para Coordinator (con placeholders no formateados)")
 
     agent = Agent(
         name="Query Coordinator",
         instructions=final_instructions,
         model=model,
+        tool_use_behavior="stop_on_first_tool",
         handoffs=[legal_agent, general_agent],
+
     )
     logger.info(f"✅ Query Coordinator creado (modelo: {model}, límite mín: {min_search_limit}, handoffs: 2)")
+    print(f"[AGENTES] ✅ Coordinator listo | model='{model}' | handoffs=['{legal_agent.name}','{general_agent.name}']")
     return agent
 
 
@@ -383,6 +416,8 @@ class RAGService:
 
     def __init__(self, config: Optional[RAGConfig] = None):
         logger.info("🚀 Inicializando RAG Service...")
+        print("[RAG] Inicializando servicio...")
+
         self.config = config or RAGConfig()
         self.response_model = self.config.response_model or BaseResponse
 
@@ -398,15 +433,18 @@ class RAGService:
 
         # Servicios base (privados)
         logger.info("🔧 Inicializando servicios base...")
+        print(f"[RAG] Servicios base | embedding_model='{self.config.embedding_model}'")
         self._embedding_service = EmbeddingService(provider="openai", model_name=self.config.embedding_model)
         self._vector_search = VectorSearchService()
 
         # Agentes (privados)
         logger.info("👥 Configurando agentes...")
+        print(f"[RAG] Configurando agentes | min_search_limit={self.config.search_limit}")
         self._setup_agents()
 
         logger.info(
             f"✅ RAG Service inicializado (modelo: {self.response_model.__name__}, límite mín: {self.config.search_limit})")
+        print(f"[RAG] ✅ Listo | response_model='{self.response_model.__name__}' | min_limit={self.config.search_limit} | timeout={self.config.agent_timeout}s")
 
     def _setup_agents(self):
         """
@@ -414,6 +452,7 @@ class RAGService:
         Método privado para inicialización interna.
         """
         supabase = SupabaseRepository()
+        print("[RAG] Creando agentes internos...")
         self._legal_specialist = _create_legal_specialist(
             supabase,
             min_search_limit=self.config.search_limit,
@@ -428,6 +467,7 @@ class RAGService:
             output_format=self.response_model
         )
         logger.info("👥 Todos los agentes configurados correctamente")
+        print("[RAG] ✅ Agentes configurados: ['Query Coordinator','Legal Analysis Specialist','General Assistant']")
 
     def _extract_metadata_from_result(self, result, processing_time: float) -> QueryMetadata:
         """
@@ -469,6 +509,7 @@ class RAGService:
             if doc_matches:
                 limits_used = [int(match) for match in doc_matches]
                 logger.info(f"📊 LÍMITES USADOS: {limits_used} (mín configurado: {self.config.search_limit})")
+                print(f"[META] Límites usados por las tools: {limits_used} | min_config={self.config.search_limit}")
 
             # Asignar los identificadores encontrados
             metadata.law_identifiers_used = list(set(law_ids + law_identifiers))
@@ -476,9 +517,11 @@ class RAGService:
 
             logger.info(
                 f"📊 METADATA: {len(metadata.law_identifiers_used)} leyes, {len(metadata.item_ids_used)} artículos, {metadata.documents_found} docs")
+            print(f"[META] leyes={len(metadata.law_identifiers_used)} | artículos={len(metadata.item_ids_used)} | docs={metadata.documents_found} | tools={metadata.tools_used}")
 
         except Exception as e:
             logger.warning(f"⚠️ Error extrayendo metadata detallada: {e}")
+            print(f"[META] ⚠️ Error extrayendo metadata: {e}")
             # Metadata básica en caso de error
             pass
 
@@ -496,26 +539,32 @@ class RAGService:
         out = getattr(result, "final_output", None)
         if out is None:
             logger.error("❌ EXTRACCIÓN: No hay final_output")
+            print("[EXTRACT] ❌ final_output ausente en result")
             raise RuntimeError("El agente no devolvió final_output (posible fallo de esquema u orquestación)")
 
         if isinstance(out, BaseModel):
             logger.info(f"✅ EXTRACCIÓN: BaseModel válido ({type(out).__name__})")
+            print(f"[EXTRACT] ✅ Recibido BaseModel '{type(out).__name__}'")
             return out
 
         if isinstance(out, dict):
             try:
                 validated = self.response_model.model_validate(out)
                 logger.info(f"✅ EXTRACCIÓN: Dict validado contra {self.response_model.__name__}")
+                print(f"[EXTRACT] ✅ Dict validado contra '{self.response_model.__name__}'")
                 return validated
             except Exception as e:
                 logger.error(f"❌ EXTRACCIÓN: Dict no válido contra {self.response_model.__name__}: {e}")
+                print(f"[EXTRACT] ❌ Dict no valida contra '{self.response_model.__name__}': {e}")
                 raise RuntimeError(f"final_output no valida contra {self.response_model.__name__}: {e}") from e
 
         if self.config.output_format not in ("structured", "model"):
             logger.warning(f"⚠️ EXTRACCIÓN: Convirtiendo {type(out)} a string")
+            print(f"[EXTRACT] ⚠️ Convirtiendo salida '{type(out).__name__}' a str por output_format='{self.config.output_format}'")
             return str(out)
 
         logger.error(f"❌ EXTRACCIÓN: Tipo inesperado {type(out)}")
+        print(f"[EXTRACT] ❌ Tipo inesperado: {type(out).__name__}")
         raise RuntimeError(f"Se esperaba {self.response_model.__name__} o dict; llegó {type(out)}")
 
     def _analyze_agent_result(self, result) -> None:
@@ -529,26 +578,31 @@ class RAGService:
         else:
             agent_name = 'Desconocido'
         logger.info(f"🎭 AGENTE FINAL: {agent_name}")
+        print(f"[FLOW] Agente final que resolvió: '{agent_name}'")
 
         # Métricas internas
         if hasattr(result, 'messages') and len(result.messages) > 2:
             self._handoffs_simulated += 1
             logger.info(f"🔄 HANDOFF detectado (mensajes: {len(result.messages)})")
+            print(f"[FLOW] Handoff detectado | mensajes={len(result.messages)}")
 
         # Trazas de herramientas (simple)
         result_str = str(result)
         if "search_legal_documents" in result_str:
             self._tools_used.append("search_legal_documents")
             logger.info("🔧 Herramienta usada: search_legal_documents")
+            print("[FLOW] Tool usada: search_legal_documents")
         if "search_legal_documents_hybrid" in result_str:
             self._tools_used.append("search_legal_documents_hybrid")
             logger.info("🔧 Herramienta usada: search_legal_documents_hybrid")
+            print("[FLOW] Tool usada: search_legal_documents_hybrid")
 
     def _safe_build_response(self, message: str, error: Optional[Exception] = None) -> BaseModel:
         """
         Construye una instancia válida del modelo dinámico (self.response_model)
         rellenando campos requeridos con valores dummy si es necesario.
         """
+        print(f"[SAFE] Construyendo respuesta segura por error | message='{message}'")
         fields = self.response_model.model_fields
         data = {}
 
@@ -581,6 +635,7 @@ class RAGService:
 
     def _handle_timeout_error(self) -> Tuple[Union[str, BaseModel], QueryMetadata]:
         logger.error(f"⏰ TIMEOUT: Consulta tardó más de {self.config.agent_timeout}s")
+        print(f"[ERROR] ⏰ Timeout de agente ({self.config.agent_timeout}s)")
 
         metadata = QueryMetadata(
             processing_time_seconds=self.config.agent_timeout,
@@ -595,6 +650,7 @@ class RAGService:
 
     def _handle_general_error(self, error: Exception) -> Tuple[Union[str, BaseModel], QueryMetadata]:
         logger.error(f"❌ ERROR EN CONSULTA: {str(error)}")
+        print(f"[ERROR] ❌ Error en consulta: {error}")
 
         metadata = QueryMetadata(
             processing_time_seconds=0.0,
@@ -619,9 +675,15 @@ class RAGService:
         logger.info(f"📏 LÍMITE MÍNIMO CONFIGURADO: {self.config.search_limit}")
         logger.info("=" * 70)
 
+        print("\n" + "=" * 70)
+        print(f"[RUN] Consulta #{self._agent_calls} | límite_mín={self.config.search_limit}")
+        print(f"[RUN] Usuario → {query}")
+        print("=" * 70)
+
         try:
             # Ejecuta el flujo con timeout
             logger.info(f"🏃 Ejecutando coordinador (timeout: {self.config.agent_timeout}s)...")
+            print(f"[RUN] Lanzando Coordinator (timeout={self.config.agent_timeout}s)")
             result = await asyncio.wait_for(
                 Runner.run(self._coordinator, query),
                 timeout=self.config.agent_timeout
@@ -632,6 +694,7 @@ class RAGService:
 
             # Extrae de final_output (nunca de messages)
             logger.info("📤 Extrayendo respuesta final...")
+            print("[RUN] Extrayendo y validando respuesta final (final_output)")
             response = self._extract_dynamic_response(result)
 
             processing_time = time.time() - start_time
@@ -642,6 +705,9 @@ class RAGService:
             logger.info(f"✅ CONSULTA COMPLETADA en {processing_time:.2f}s")
             logger.info(f"📊 METADATA: {metadata.documents_found} docs, {len(metadata.law_identifiers_used)} leyes")
             logger.info("=" * 70)
+
+            print(f"[RUN] ✅ Completado en {processing_time:.2f}s | docs={metadata.documents_found} | handoffs={metadata.handoffs_detected} | tools={metadata.tools_used}")
+            print("=" * 70 + "\n")
 
             return response, metadata
 
@@ -654,14 +720,17 @@ class RAGService:
         """Cambia el modelo de respuesta dinámicamente."""
         try:
             logger.info(f"🔄 Cambiando modelo de respuesta: {self.response_model.__name__} → {new_model.__name__}")
+            print(f"[CFG] Cambio de response_model: '{self.response_model.__name__}' → '{new_model.__name__}', output_format='{output_format}'")
             self.response_model = new_model
             self.config.response_model = new_model
             self.config.output_format = output_format
             self._setup_agents()
             logger.info("✅ Modelo de respuesta actualizado")
+            print("[CFG] ✅ Modelo de respuesta y agentes actualizados")
             return True
         except Exception as e:
             logger.error(f"❌ Error actualizando modelo de respuesta: {e}")
+            print(f"[CFG] ❌ Error actualizando modelo de respuesta: {e}")
             return False
 
     def update_search_limit(self, new_min_limit: int) -> bool:
@@ -677,6 +746,7 @@ class RAGService:
         try:
             old_limit = self.config.search_limit
             logger.info(f"🔄 Cambiando límite mínimo de búsqueda: {old_limit} → {new_min_limit}")
+            print(f"[CFG] Cambio de min_search_limit: {old_limit} → {new_min_limit}")
 
             self.config.search_limit = new_min_limit
             global _MIN_SEARCH_LIMIT
@@ -686,15 +756,17 @@ class RAGService:
             self._setup_agents()
 
             logger.info(f"✅ Límite mínimo de búsqueda actualizado a {new_min_limit}")
+            print("[CFG] ✅ Límite mínimo actualizado y agentes reconfigurados")
             return True
         except Exception as e:
             logger.error(f"❌ Error actualizando límite de búsqueda: {e}")
+            print(f"[CFG] ❌ Error actualizando límite de búsqueda: {e}")
             return False
 
     def get_current_agent_config(self) -> Dict[str, Any]:
         """Estado actual de configuración de agentes (para debugging)."""
         try:
-            return {
+            cfg = {
                 "coordinator": {
                     "name": self._coordinator.name,
                     "model": self._coordinator.model,
@@ -725,12 +797,16 @@ class RAGService:
                     "current_global_limit": _MIN_SEARCH_LIMIT
                 }
             }
+            print("[CFG] Estado actual de agentes y servicio preparado para inspección en Jupyter")
+            return cfg
         except Exception as e:
             logger.error(f"Error obteniendo configuración de agentes: {e}")
+            print(f"[CFG] ❌ Error obteniendo configuración: {e}")
             return {"error": str(e)}
 
     async def run_query(self, query: str) -> Tuple[Union[str, BaseModel], QueryMetadata]:
         """Alias para process_query (compatibilidad)."""
+        print("[API] run_query → delega en process_query")
         return await self.process_query(query)
 
     async def search_documents_directly(self, query: str, limit: Optional[int] = None, ) -> List[Dict[str, Any]]:
@@ -744,6 +820,7 @@ class RAGService:
 
             self._tools_used.append("direct_search")
             logger.info(f"🔍 BÚSQUEDA DIRECTA: consulta='{query}', límite={effective_limit}")
+            print(f"[DIRECT] Búsqueda directa | query='{query}' | limit={effective_limit} | thr=0.3 (filtra >=0.6)")
 
             query_embedding = await self._embedding_service.generate_embedding(query)
             search_results = await self._vector_search.search_similar_vectors(
@@ -767,10 +844,12 @@ class RAGService:
                     })
 
             logger.info(f"✅ BÚSQUEDA DIRECTA: {len(results)} documentos encontrados (similitud >= 0.6)")
+            print(f"[DIRECT] ✅ Devueltos {len(results)} documentos (similitud >= 0.6)")
             return results
 
         except Exception as e:
             logger.exception(f"Error en búsqueda directa: {e}")
+            print(f"[DIRECT] ❌ Error: {e}")
             return []
 
     def get_search_limits_info(self) -> Dict[str, Any]:
@@ -780,18 +859,20 @@ class RAGService:
         Returns:
             Dict con información sobre límites mínimo, máximo recomendado y guías de uso
         """
-        return {
-            "min_search_limit": self.config.search_limit,
-            "current_global_limit": _MIN_SEARCH_LIMIT,
-            "recommended_limits": {
-                "simple_queries": f"{self.config.search_limit}-15",
-                "complex_queries": "15-30",
-                "exhaustive_research": "30-40"
-            },
-            "usage_guidelines": {
-                "simple": "Consultas específicas sobre un artículo o concepto concreto",
-                "complex": "Análisis comparativos, múltiples conceptos o investigación detallada",
-                "exhaustive": "Investigaciones completas, reports extensos o análisis profundos"
-            },
-            "agent_autonomy": "Los agentes pueden elegir límites superiores al mínimo según la complejidad de la consulta"
-        }
+        info = {
+                "min_search_limit": self.config.search_limit,
+                "current_global_limit": _MIN_SEARCH_LIMIT,
+                "recommended_limits": {
+                    "simple_queries": f"{self.config.search_limit}-15",
+                    "complex_queries": "15-30",
+                    "exhaustive_research": "30-40"
+                },
+                "usage_guidelines": {
+                    "simple": "Consultas específicas sobre un artículo o concepto concreto",
+                    "complex": "Análisis comparativos, múltiples conceptos o investigación detallada",
+                    "exhaustive": "Investigaciones completas, reports extensos o análisis profundos"
+                },
+                "agent_autonomy": "Los agentes pueden elegir límites superiores al mínimo según la complejidad de la consulta"
+            }
+        print(f"[INFO] Límites de búsqueda | min={info['min_search_limit']} | recomendaciones={info['recommended_limits']}")
+        return info

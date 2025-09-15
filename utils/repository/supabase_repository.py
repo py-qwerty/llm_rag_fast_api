@@ -31,6 +31,10 @@ class RandomLawItem(BaseModel):
         None,
         description="Contenido del artículo/item de la ley"
     )
+    vector: Optional[List[float]] = Field(
+        None,
+        description="Vector de embedding asociado al item de ley"
+    )
 
     class Config:
         # Permite usar nombres de campos con snake_case
@@ -46,6 +50,8 @@ class RandomLawItem(BaseModel):
                 "content": "Las mujeres y los hombres son iguales en dignidad humana..."
             }
         }
+
+
 
 
 class RandomLawItemsResponse(BaseModel):
@@ -121,13 +127,25 @@ class SupabaseRepository:
         return query.execute().data
 
     def parse_random_law_items(self, supabase_response: List[dict]) -> List[RandomLawItem]:
-        """
-        Convierte la respuesta de Supabase al modelo Pydantic.
-
-        :param supabase_response: Lista de diccionarios desde Supabase
-        :return: RandomLawItemsResponse con los datos parseados
-        """
-        items = [RandomLawItem(**item) for item in supabase_response]
+        items = []
+        for item in supabase_response:
+            vec_str = item.get("vector")
+            if vec_str:
+                vec_str = vec_str.strip()
+                if vec_str.startswith("[") and vec_str.endswith("]"):
+                    # formato de pgvector: [-0.004, 0.123, ...]
+                    cleaned = vec_str.strip("[]")
+                elif vec_str.startswith("{") and vec_str.endswith("}"):
+                    # formato array de Postgres: {0.1,0.2,...}
+                    cleaned = vec_str.strip("{}")
+                else:
+                    cleaned = vec_str
+                try:
+                    vector = [float(x) for x in cleaned.split(",") if x.strip()]
+                except ValueError:
+                    vector = []
+                item["vector"] = vector
+            items.append(RandomLawItem(**item))
         return items
 
     def get_random_laws(self, limit: int = 5) -> List[RandomLawItem]:
